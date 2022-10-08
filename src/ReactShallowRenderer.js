@@ -515,9 +515,7 @@ See https://fb.me/react-invalid-hook-call for tips about how to debug and fix th
 
     this._rendering = true;
     this._element = element;
-    this._context = elementType.contextType
-      ? context
-      : getMaskedContext(elementType.contextTypes, context);
+    this._context = getMaskedContext(elementType, context);
 
     // Inner memo component props aren't currently validated in createElement.
     let prevGetStack;
@@ -795,12 +793,16 @@ function shouldConstruct(Component) {
   return !!(Component.prototype && Component.prototype.isReactComponent);
 }
 
-function getMaskedContext(contextTypes, unmaskedContext) {
-  if (!contextTypes || !unmaskedContext) {
+function getMaskedContext(elementType, unmaskedContext) {
+  if (elementType.contextType) {
+    return unmaskedContext;
+  }
+
+  if (!elementType.contextTypes || !unmaskedContext) {
     return emptyObject;
   }
   const context = {};
-  for (let key in contextTypes) {
+  for (let key in elementType.contextTypes) {
     context[key] = unmaskedContext[key];
   }
   return context;

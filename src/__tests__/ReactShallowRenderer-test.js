@@ -352,6 +352,36 @@ describe('ReactShallowRenderer', () => {
   });
 
   it('should shallow render a function component', () => {
+    const SomeContext = React.createContext({
+      bar: 'BAR',
+    });
+
+    function SomeComponent(props) {
+      const context = React.useContext(SomeContext);
+
+      return (
+        <div>
+          <div>{props.foo}</div>
+          <div>{context.bar}</div>
+          <span className="child1" />
+          <span className="child2" />
+        </div>
+      );
+    }
+
+    const shallowRenderer = createRenderer();
+    const result = shallowRenderer.render(<SomeComponent foo={'FOO'} />);
+
+    expect(result.type).toBe('div');
+    expect(result.props.children).toEqual([
+      <div>FOO</div>,
+      <div>BAR</div>,
+      <span className="child1" />,
+      <span className="child2" />,
+    ]);
+  });
+
+  it('should shallow render a function component with legacy context', () => {
     function SomeComponent(props, context) {
       return (
         <div>
@@ -570,7 +600,23 @@ describe('ReactShallowRenderer', () => {
     expect(shallowRenderer.getMountedInstance().someMethod()).toEqual(5);
   });
 
-  it('can shallowly render components with contextTypes', () => {
+  it('can shallowly render class component with context', () => {
+    const SimpleContext = React.createContext();
+
+    class SimpleComponent extends React.Component {
+      static contextType = SimpleContext;
+
+      render() {
+        return <div />;
+      }
+    }
+
+    const shallowRenderer = createRenderer();
+    const result = shallowRenderer.render(<SimpleComponent />);
+    expect(result).toEqual(<div />);
+  });
+
+  it('can shallowly render class component with legacy context', () => {
     class SimpleComponent extends React.Component {
       static contextTypes = {
         name: PropTypes.string,
@@ -587,6 +633,85 @@ describe('ReactShallowRenderer', () => {
   });
 
   it('passes expected params to legacy component lifecycle methods', () => {
+    const componentDidUpdateParams = [];
+    const componentWillReceivePropsParams = [];
+    const componentWillUpdateParams = [];
+    const setStateParams = [];
+    const shouldComponentUpdateParams = [];
+
+    const initialProp = {prop: 'init prop'};
+    const initialState = {state: 'init state'};
+    const initialContext = {context: 'init context'};
+    const updatedState = {state: 'updated state'};
+    const updatedProp = {prop: 'updated prop'};
+    const updatedContext = {context: 'updated context'};
+
+    const SimpleContext = React.createContext(initialContext);
+
+    class SimpleComponent extends React.Component {
+      static contextType = SimpleContext;
+
+      constructor(props) {
+        super(props);
+        this.state = initialState;
+      }
+      componentDidUpdate(...args) {
+        componentDidUpdateParams.push(...args);
+      }
+      UNSAFE_componentWillReceiveProps(...args) {
+        componentWillReceivePropsParams.push(...args);
+        this.setState((...innerArgs) => {
+          setStateParams.push(...innerArgs);
+          return updatedState;
+        });
+      }
+      UNSAFE_componentWillUpdate(...args) {
+        componentWillUpdateParams.push(...args);
+      }
+      shouldComponentUpdate(...args) {
+        shouldComponentUpdateParams.push(...args);
+        return true;
+      }
+      render() {
+        return null;
+      }
+    }
+
+    const shallowRenderer = createRenderer();
+    shallowRenderer.render(
+      React.createElement(SimpleComponent, initialProp),
+      initialContext,
+    );
+    expect(componentDidUpdateParams).toEqual([]);
+    expect(componentWillReceivePropsParams).toEqual([]);
+    expect(componentWillUpdateParams).toEqual([]);
+    expect(setStateParams).toEqual([]);
+    expect(shouldComponentUpdateParams).toEqual([]);
+
+    // Lifecycle hooks should be invoked with the correct prev/next params on update.
+    shallowRenderer.render(
+      React.createElement(SimpleComponent, updatedProp),
+      updatedContext,
+    );
+    expect(componentWillReceivePropsParams).toEqual([
+      updatedProp,
+      updatedContext,
+    ]);
+    expect(setStateParams).toEqual([initialState, initialProp]);
+    expect(shouldComponentUpdateParams).toEqual([
+      updatedProp,
+      updatedState,
+      updatedContext,
+    ]);
+    expect(componentWillUpdateParams).toEqual([
+      updatedProp,
+      updatedState,
+      updatedContext,
+    ]);
+    expect(componentDidUpdateParams).toEqual([]);
+  });
+
+  it('passes expected params to legacy component lifecycle methods with legacy context', () => {
     const componentDidUpdateParams = [];
     const componentWillReceivePropsParams = [];
     const componentWillUpdateParams = [];
@@ -1112,6 +1237,24 @@ describe('ReactShallowRenderer', () => {
   });
 
   it('can pass context when shallowly rendering', () => {
+    const SimpleContext = React.createContext();
+
+    class SimpleComponent extends React.Component {
+      static contextType = SimpleContext;
+
+      render() {
+        return <div>{this.context.name}</div>;
+      }
+    }
+
+    const shallowRenderer = createRenderer();
+    const result = shallowRenderer.render(<SimpleComponent />, {
+      name: 'foo',
+    });
+    expect(result).toEqual(<div>foo</div>);
+  });
+
+  it('can pass legacy context when shallowly rendering', () => {
     class SimpleComponent extends React.Component {
       static contextTypes = {
         name: PropTypes.string,
@@ -1130,6 +1273,34 @@ describe('ReactShallowRenderer', () => {
   });
 
   it('should track context across updates', () => {
+    const SimpleContext = React.createContext();
+
+    class SimpleComponent extends React.Component {
+      static contextType = SimpleContext;
+
+      state = {
+        bar: 'bar',
+      };
+
+      render() {
+        return <div>{`${this.context.foo}:${this.state.bar}`}</div>;
+      }
+    }
+
+    const shallowRenderer = createRenderer();
+    let result = shallowRenderer.render(<SimpleComponent />, {
+      foo: 'foo',
+    });
+    expect(result).toEqual(<div>foo:bar</div>);
+
+    const instance = shallowRenderer.getMountedInstance();
+    instance.setState({bar: 'baz'});
+
+    result = shallowRenderer.getRenderOutput();
+    expect(result).toEqual(<div>foo:baz</div>);
+  });
+
+  it('should track legacy context across updates', () => {
     class SimpleComponent extends React.Component {
       static contextTypes = {
         foo: PropTypes.string,
@@ -1157,7 +1328,7 @@ describe('ReactShallowRenderer', () => {
     expect(result).toEqual(<div>foo:baz</div>);
   });
 
-  it('should filter context by contextTypes', () => {
+  it('should filter legacy context by contextTypes', () => {
     class SimpleComponent extends React.Component {
       static contextTypes = {
         foo: PropTypes.string,
@@ -1175,7 +1346,7 @@ describe('ReactShallowRenderer', () => {
     expect(result).toEqual(<div>foo:undefined</div>);
   });
 
-  it('can fail context when shallowly rendering', () => {
+  it('can fail legacy context when shallowly rendering', () => {
     class SimpleComponent extends React.Component {
       static contextTypes = {
         name: PropTypes.string.isRequired,
@@ -1244,8 +1415,8 @@ describe('ReactShallowRenderer', () => {
     let stateSuccessfullyUpdated = false;
 
     class Component extends React.Component {
-      constructor(props, context) {
-        super(props, context);
+      constructor(props) {
+        super(props);
         this.state = {
           hasUpdatedState: false,
         };
@@ -1273,8 +1444,8 @@ describe('ReactShallowRenderer', () => {
     const shallowRenderer = createRenderer();
 
     class Component extends React.Component {
-      constructor(props, context) {
-        super(props, context);
+      constructor(props) {
+        super(props);
         this.state = {
           foo: 'foo',
         };
@@ -1304,8 +1475,8 @@ describe('ReactShallowRenderer', () => {
     const mockFn = jest.fn().mockReturnValue(false);
 
     class Component extends React.Component {
-      constructor(props, context) {
-        super(props, context);
+      constructor(props) {
+        super(props);
         this.state = {
           hasUpdatedState: false,
         };
